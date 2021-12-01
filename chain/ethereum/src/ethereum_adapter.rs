@@ -1055,13 +1055,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 transaction_receipts: Vec::new(),
             }));
         }
-        let web3 = self.web3.clone();
 
         // A receipt might be missing because the block was uncled, and the
         // transaction never made it back into the main chain.
-
-        let block = block.clone();
-
         let receipt_futures = block
             .transactions
             .iter()
@@ -1069,7 +1065,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 let logger = logger.clone();
                 let tx_hash = tx.hash;
 
-                web3.eth()
+                self.web3
+                    .eth()
                     .transaction_receipt(tx_hash)
                     .from_err()
                     .map_err(IngestorError::Unknown)
@@ -1118,12 +1115,15 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })
             .collect::<Vec<_>>();
 
-        Box::new(stream::futures_ordered(receipt_futures).collect().map(
-            move |transaction_receipts| EthereumBlock {
-                block: Arc::new(block),
-                transaction_receipts,
-            },
-        ))
+        let block_future =
+            stream::futures_ordered(receipt_futures)
+                .collect()
+                .map(move |transaction_receipts| EthereumBlock {
+                    block: Arc::new(block),
+                    transaction_receipts,
+                });
+
+        Box::new(block_future)
     }
 
     fn block_pointer_from_number(
